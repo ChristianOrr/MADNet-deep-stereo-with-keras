@@ -1,9 +1,10 @@
 import random
 import tensorflow as tf
+import keras
 from keras import backend
-from keras.utils import data_utils
-from keras.utils import layer_utils
-from keras.engine import data_adapter
+from keras.utils import get_file
+from keras.utils import get_source_inputs
+from tensorflow.keras.utils import unpack_x_y_sample_weight
 from keras import layers
 import numpy as np
 from matplotlib import cm
@@ -16,7 +17,7 @@ def colorize_img(value, vmin=None, vmax=None, cmap='jet'):
     By default it will normalize the input value to the range 0..1
     before mapping to a grayscale colormap.
     Arguments:
-      - value: 4D Tensor of shape [batch_size,height, width,1]
+      - value: 4D Tensor of shape [batch_size, height, width, 1]
       - vmin: the minimum value of the range used for normalization. (Default: value minimum)
       - vmax: the maximum value of the range used for normalization. (Default: value maximum)
       - cmap: a valid cmap named for use with matplotlib's 'get_cmap'.(Default: 'gray')
@@ -24,17 +25,17 @@ def colorize_img(value, vmin=None, vmax=None, cmap='jet'):
     Returns a 3D tensor of shape [batch_size,height, width,3].
     """
     # normalize
-    vmin = tf.reduce_min(value) if vmin is None else vmin
-    vmax = tf.reduce_max(value) if vmax is None else vmax
+    vmin = keras.ops.min(value) if vmin is None else vmin
+    vmax = keras.ops.max(value) if vmax is None else vmax
     value = (value - vmin) / (vmax - vmin) # vmin..vmax
 
     # quantize
-    indices = tf.cast(tf.round(value[:, :, :, 0]*255), dtype=tf.int32)
+    indices = keras.ops.cast(keras.ops.round(value[:, :, :, 0]*255), dtype="int32")
 
     # gather
     color_map = cm.get_cmap(cmap)
     colors = color_map(np.arange(256))[:, :3]
-    colors = tf.constant(colors, dtype=tf.float32)
+    colors = keras.ops.convert_to_tensor(colors, dtype="float32")
     value = tf.gather(colors, indices)
     return value
 
@@ -48,18 +49,18 @@ def _cost_volume_block(c1, warp, search_range=2):
         warp: Warped level of the feature pyramid of the right image
         search_range: Search range (maximum displacement)
     """
-    padded_lvl = tf.pad(warp, [[0, 0], [0, 0], [search_range, search_range], [0, 0]])
+    padded_lvl = keras.ops.pad(warp, [[0, 0], [0, 0], [search_range, search_range], [0, 0]])
     width = c1.shape[2]
     max_offset = search_range * 2 + 1
 
     cost_vol = []
     for i in range(0, max_offset):
         slice = padded_lvl[:, :, i:width+i, :]
-        cost = tf.reduce_mean(c1 * slice, axis=3, keepdims=True)
+        cost = keras.ops.mean(c1 * slice, axis=3, keepdims=True)
         cost_vol.append(cost)
 
-    cost_vol = tf.concat(cost_vol, axis=3)
-    cost_curve = tf.concat([c1, cost_vol], axis=3)
+    cost_vol = keras.ops.concatenate(cost_vol, axis=3)
+    cost_curve = keras.ops.concatenate([c1, cost_vol], axis=3)
 
     return cost_curve
 
@@ -329,7 +330,7 @@ def _custom_train_step(self, data):
         3. Loss is reduced for batch sizes larger than 1.
     """
     # Left, right image inputs and groundtruth target disparity
-    inputs, gt, sample_weight = data_adapter.unpack_x_y_sample_weight(data)
+    inputs, gt, sample_weight = unpack_x_y_sample_weight(data)
 
     left_input = inputs["left_input"]
     right_input = inputs["right_input"]
@@ -370,7 +371,7 @@ def _custom_test_step(predict_func):
 
     @tf.function
     def _test_step_block(self, data):
-        x, y, sample_weight = data_adapter.unpack_x_y_sample_weight(data)
+        x, y, sample_weight = unpack_x_y_sample_weight(data)
         y_pred = predict_func(self, data)
         # Updates stateful loss metrics.
         return_metrics = {}
@@ -401,7 +402,7 @@ def _custom_predict_step(num_adapt, mad_type):
     if num_adapt == 6:
         @tf.function
         def _predict_step_block(self, data):
-            inputs, _, _ = data_adapter.unpack_x_y_sample_weight(data)
+            inputs, _, _ = unpack_x_y_sample_weight(data)
 
             left_input = inputs["left_input"]
             right_input = inputs["right_input"]
@@ -445,7 +446,7 @@ def _custom_predict_step(num_adapt, mad_type):
                  "volume_filtering_6_disp1", "volume_filtering_6_disp2", "volume_filtering_6_disp3",
                  "volume_filtering_6_disp4", "volume_filtering_6_disp5", "volume_filtering_6_disp6"],
             ]
-            inputs, _, _ = data_adapter.unpack_x_y_sample_weight(data)
+            inputs, _, _ = unpack_x_y_sample_weight(data)
 
             left_input = inputs["left_input"]
             right_input = inputs["right_input"]
@@ -575,7 +576,7 @@ def MADNet(input_shape=None,
         except ValueError:
             try:
                 is_input_t_tensor = backend.is_keras_tensor(
-                    layer_utils.get_source_inputs(input_tensor))
+                    get_source_inputs(input_tensor))
             except ValueError:
                 raise ValueError(
                     f'input_tensor: {input_tensor}'
@@ -766,7 +767,7 @@ def MADNet(input_shape=None,
         pretrained_models_url = "https://huggingface.co/ChristianOrr/madnet_keras/resolve/main/"
         model_name = "madnet_" + weights + ".h5"
         weight_path = pretrained_models_url + weights + ".h5"
-        weights_path = data_utils.get_file(model_name, weight_path, cache_subdir='models')
+        weights_path = get_file(model_name, weight_path, cache_subdir='models')
         model.load_weights(weights_path)
     elif weights is not None:
         model.load_weights(weights)
