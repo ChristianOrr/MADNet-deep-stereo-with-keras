@@ -1,5 +1,6 @@
 import os
 import tensorflow as tf
+import keras
 import numpy as np
 
 
@@ -35,15 +36,15 @@ class StereoDatasetCreator():
         self.shuffle = shuffle
         self.augment = augment
 
-        self.left_names = tf.constant(
+        self.left_names = keras.ops.array(
             sorted([name for name in os.listdir(left_dir) if os.path.isfile(f"{self.left_dir}/{name}")]
             )
         )
-        self.right_names = tf.constant(
+        self.right_names = keras.ops.array(
             sorted([name for name in os.listdir(right_dir) if os.path.isfile(f"{self.right_dir}/{name}")])
         )
         if self.disp_dir is not None:
-            self.disp_names = tf.constant(
+            self.disp_names = keras.ops.array(
                 sorted([name for name in os.listdir(disp_dir) if os.path.isfile(f"{self.disp_dir}/{name}")])
             )
 
@@ -74,9 +75,9 @@ class StereoDatasetCreator():
         # Using tf.io.read_file since it can take a tensor as input
         raw = tf.io.read_file(path)
         # Converts to float32 and normalises values
-        image = tf.io.decode_image(raw, channels=3, dtype=tf.float32, expand_animations=False)
+        image = tf.io.decode_image(raw, channels=3, dtype="float32", expand_animations=False)
         # Change dimensions to the desired model dimensions
-        image = tf.image.resize(image, [self.height, self.width], method="bilinear")
+        image = keras.ops.image.resize(image, [self.height, self.width], interpolation="bilinear")
         if self.augment:
             image = tf.image.random_hue(image, 0.08)
             image = tf.image.random_saturation(image, 0.6, 1.6)
@@ -150,7 +151,7 @@ class StereoDatasetCreator():
             disp_map *= -1
         # Change dimensions to the desired (height, width, channels)
         # Using nearest neighbour interpolation for sparse groundtruth disparities
-        disp_map = tf.image.resize(disp_map, [self.height, self.width], method="nearest")
+        disp_map = keras.ops.image.resize(disp_map, [self.height, self.width], interpolation="nearest")
         return disp_map
 
     def _get_disp(self, disp_name):
@@ -166,15 +167,15 @@ class StereoDatasetCreator():
         disp_path = f"{self.disp_dir}/" + disp_name
         if disp_extension == "pfm" or disp_extension == "PFM":
             # wrapping in py_function so that the function can execute eagerly and run non tensor ops
-            disp_map = tf.py_function(func=self._get_pfm, inp=[disp_path], Tout=tf.float32)
+            disp_map = tf.py_function(func=self._get_pfm, inp=[disp_path], Tout="float32")
         elif disp_extension == "png" or disp_extension == "PNG":
             disp_bytes = tf.io.read_file(disp_path)
             # Using uint16 for higher precision
-            disp_map = tf.io.decode_png(disp_bytes, dtype=tf.uint16)
-            disp_map = tf.cast(disp_map, dtype=tf.float32)
+            disp_map = tf.io.decode_png(disp_bytes, dtype="uint16")
+            disp_map = keras.ops.cast(disp_map, dtype="float32")
             disp_map = disp_map / 256.0
             # Using nearest neighbour interpolation for sparse groundtruth disparities
-            disp_map = tf.image.resize(disp_map, [self.height, self.width], method="nearest")
+            disp_map = keras.ops.image.resize(disp_map, [self.height, self.width], interpolation="nearest")
         else:
             raise ValueError("Unsupported disparity file detected "
                              "only .pfm and .png disparities are supported. \n"
@@ -197,9 +198,10 @@ class StereoDatasetCreator():
         disp_map = None  
         if self.disp_dir is not None:
             disp_name = self.disp_names[index]
-            disp_map = tf.py_function(func=self._get_disp, inp=[disp_name], Tout=tf.float32)
-
-        return {'left_input': left_image, 'right_input': right_image}, disp_map
+            disp_map = tf.py_function(func=self._get_disp, inp=[disp_name], Tout="float32")
+        # Add a placeholder sample_weight to make self.compute_loss happy
+        sample_weight = keras.ops.ones_like(left_image)
+        return {'left_input': left_image, 'right_input': right_image}, disp_map, sample_weight
 
     def __call__(self):
         """
@@ -256,9 +258,9 @@ class StereoGenerator(tf.keras.utils.Sequence):
 
     def _get_image(self, image_dir, image_name):
         # get a single image helper function
-        image = tf.keras.preprocessing.image.load_img(f"{image_dir}/{image_name}")
-        image_arr = tf.keras.preprocessing.image.img_to_array(image)
-        image_arr = tf.image.resize(image_arr, (self.height, self.width)).numpy()
+        image = keras.utils.load_img(f"{image_dir}/{image_name}")
+        image_arr = keras.utils.img_to_array(image)
+        image_arr = keras.ops.image.resize(image_arr, (self.height, self.width)).numpy()
         return image_arr/255.
 
     def __getitem__(self, batch_index):
@@ -266,8 +268,8 @@ class StereoGenerator(tf.keras.utils.Sequence):
         left_batch = self.left_paths[index: self.batch_size + index]
         right_batch = self.right_paths[index: self.batch_size + index]
 
-        left_images = tf.constant([self._get_image(self.left_dir, image_name) for image_name in left_batch])
-        right_images = tf.constant([self._get_image(self.right_dir, image_name) for image_name in right_batch])
+        left_images = keras.ops.array([self._get_image(self.left_dir, image_name) for image_name in left_batch])
+        right_images = keras.ops.array([self._get_image(self.right_dir, image_name) for image_name in right_batch])
         return {'left_input': left_images, 'right_input': right_images}, None
 
 

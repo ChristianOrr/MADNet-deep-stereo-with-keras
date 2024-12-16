@@ -1,5 +1,6 @@
 import os
 import tensorflow as tf
+import keras
 import argparse
 from madnet import MADNet
 from preprocessing import StereoDatasetCreator
@@ -51,7 +52,7 @@ def main(args):
     # Create output folder if it doesn't already exist
     os.makedirs(args.output_dir, exist_ok=True)
     log_dir = args.output_dir + "/logs"
-    save_extension = ".h5"
+    save_extension = ".keras"
     if args.use_checkpoints:
         save_extension = ".ckpt"
 
@@ -61,7 +62,22 @@ def main(args):
         weights=args.weights_path,
         search_range=args.search_range
     )
-    optimizer = tf.keras.optimizers.Adam(learning_rate=args.lr)
+
+    # class LRSchedule(keras.optimizers.schedules.LearningRateSchedule):
+
+    #     def __init__(self, inital_lr):
+    #         self.initial_lr = initial_lr
+
+    #     def __call__(self, step):
+    #         min_lr = args.min_lr
+    #         if epoch > 100:
+    #             # learning_rate * decay_rate ^ (global_step / decay_steps)
+    #             lr = lr * args.decay ** (step // 100)
+    #         lr = max(min_lr, lr)
+    #         return lr
+
+
+    optimizer = keras.optimizers.AdamW(learning_rate=args.lr)
     # If no train groundtruth is available, then the reprojection error
     # from warping is used to calculate the loss
     if args.train_disp_dir is None:
@@ -125,11 +141,11 @@ def main(args):
         lr = max(min_lr, lr)
         tf.summary.scalar('learning rate', data=lr, step=epoch)
         return lr
-    schedule_callback = tf.keras.callbacks.LearningRateScheduler(scheduler)
-    save_callback = tf.keras.callbacks.ModelCheckpoint(
+    schedule_callback = keras.callbacks.LearningRateScheduler(scheduler)
+    save_callback = keras.callbacks.ModelCheckpoint(
         filepath=args.output_dir + "/epoch-{epoch:04d}" + save_extension,
         save_freq=args.save_freq,
-        save_weights_only=True,
+        save_weights_only=False,
         verbose=0
     )
     all_callbacks = [
@@ -137,7 +153,7 @@ def main(args):
             schedule_callback
         ]
     if args.log_tensorboard:
-        tensorboard_callback = tf.keras.callbacks.TensorBoard(
+        tensorboard_callback = keras.callbacks.TensorBoard(
             log_dir=log_dir,
             histogram_freq=1,
             write_steps_per_second=True,

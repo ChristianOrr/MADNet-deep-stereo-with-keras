@@ -1,8 +1,8 @@
-import tensorflow as tf
+import keras
 
 
 #---------------Metrics-------------------
-class EndPointError(tf.keras.metrics.Metric):
+class EndPointError(keras.metrics.Metric):
     """
     End point error metric.
     Calculates the average absolute difference 
@@ -15,18 +15,18 @@ class EndPointError(tf.keras.metrics.Metric):
         self.end_point_error = self.add_weight(name='EPE', initializer='zeros')
 
     def update_state(self, y_true, y_pred, sample_weight=None):
-        abs_errors = tf.abs(y_pred - y_true)
+        abs_errors = keras.ops.absolute(y_pred - y_true)
         # Valid map has all non-zero pixels set to 1 and 0 pixels remain 0
-        valid_map = tf.where(
-            tf.equal(y_true, 0),
-            tf.zeros_like(y_true, dtype=tf.float32),
-            tf.ones_like(y_true, dtype=tf.float32)
+        valid_map = keras.ops.where(
+            keras.ops.equal(y_true, 0),
+            keras.ops.zeros_like(y_true, dtype="float32"),
+            keras.ops.ones_like(y_true, dtype="float32")
         )
         # Remove the errors with 0 groundtruth disparity
         filtered_error = abs_errors * valid_map
         # Get the mean error (non-zero groundtruth pixels)
         self.end_point_error.assign_add(
-            tf.reduce_sum(filtered_error) / tf.reduce_sum(valid_map)
+            keras.ops.sum(filtered_error) / keras.ops.sum(valid_map)
         )
 
     def result(self):
@@ -37,7 +37,7 @@ class EndPointError(tf.keras.metrics.Metric):
         self.end_point_error.assign(0.0)
 
 
-class Bad3(tf.keras.metrics.Metric):
+class Bad3(keras.metrics.Metric):
     """
     Bad3 also called D1-all is the percentage
     of pixels with disparity difference >= 3
@@ -50,23 +50,23 @@ class Bad3(tf.keras.metrics.Metric):
         self.bad3 = self.add_weight(name='bad3_percent', initializer='zeros')
 
     def update_state(self, y_true, y_pred, sample_weight=None):
-        abs_errors = tf.abs(y_pred - y_true)
+        abs_errors = keras.ops.absolute(y_pred - y_true)
         # Valid map has all non-zero pixels set to 1 and 0 pixels remain 0
-        valid_map = tf.where(
-            tf.equal(y_true, 0),
-            tf.zeros_like(y_true, dtype=tf.float32),
-            tf.ones_like(y_true, dtype=tf.float32)
+        valid_map = keras.ops.where(
+            keras.ops.equal(y_true, 0),
+            keras.ops.zeros_like(y_true, dtype="float32"),
+            keras.ops.ones_like(y_true, dtype="float32")
         )
         # Remove the errors with 0 groundtruth disparity
         filtered_error = abs_errors * valid_map
         # 1 assigned to all errors greater than threshold, 0 to the rest
-        bad_pixel_abs = tf.where(
-            tf.greater(filtered_error, self.pixel_threshold),
-            tf.ones_like(filtered_error, dtype=tf.float32),
-            tf.zeros_like(filtered_error, dtype=tf.float32)
+        bad_pixel_abs = keras.ops.where(
+            keras.ops.greater(filtered_error, self.pixel_threshold),
+            keras.ops.ones_like(filtered_error, dtype="float32"),
+            keras.ops.zeros_like(filtered_error, dtype="float32")
         )
         # (number of errors greater than threshold) / (number of errors)   
-        self.bad3.assign_add(tf.reduce_sum(bad_pixel_abs) / tf.reduce_sum(valid_map) * 100)
+        self.bad3.assign_add(keras.ops.sum(bad_pixel_abs) / keras.ops.sum(valid_map) * 100)
 
     def result(self):
         return self.bad3
@@ -77,7 +77,7 @@ class Bad3(tf.keras.metrics.Metric):
 
 
 #---------------Losses-------------------
-class SSIMLoss(tf.keras.losses.Loss):
+class SSIMLoss(keras.losses.Loss):
     """
     SSIM dissimilarity measure
     Used for self-supervised training
@@ -87,8 +87,8 @@ class SSIMLoss(tf.keras.losses.Loss):
     """
     def __init__(self, name="mean_SSIM_l1"):
         super(SSIMLoss, self).__init__(name=name)
-        self.pool = tf.keras.layers.AveragePooling2D(pool_size=(3, 3), strides=(1, 1), padding='valid')
-        self.reduction = tf.keras.losses.Reduction.NONE
+        self.pool = keras.layers.AveragePooling2D(pool_size=(3, 3), strides=(1, 1), padding='valid')
+        self.reduction = None
 
     def call(self, y_true, y_pred):
         C1 = 0.01**2
@@ -104,16 +104,16 @@ class SSIMLoss(tf.keras.losses.Loss):
         SSIM_d = (mu_x ** 2 + mu_y ** 2 + C1) * (sigma_x + sigma_y + C2)
 
         SSIM = SSIM_n / SSIM_d
-        SSIM = tf.clip_by_value((1-SSIM)/2, 0, 1)
+        SSIM = keras.ops.clip((1-SSIM)/2, 0, 1)
 
-        mean_SSIM = tf.reduce_mean(SSIM)
+        mean_SSIM = keras.ops.mean(SSIM)
 
-        sum_l1 = tf.reduce_sum(tf.abs(y_true - y_pred))
+        sum_l1 = keras.ops.sum(keras.ops.absolute(y_true - y_pred))
 
         return 0.85 * mean_SSIM + 0.15 * sum_l1
 
 
-class ReconstructionLoss(tf.keras.losses.Loss):
+class ReconstructionLoss(keras.losses.Loss):
     """
     Reconstruction loss function (sum l1)
     Per pixel absolute error between groundtruth 
@@ -125,13 +125,13 @@ class ReconstructionLoss(tf.keras.losses.Loss):
     """
     def __init__(self, name="sum_l1"):
         super(ReconstructionLoss, self).__init__(name=name)
-        self.reduction = tf.keras.losses.Reduction.NONE
+        self.reduction = None
 
     def call(self, y_true, y_pred):
         # Valid map has all non-zero pixels set to 1 and 0 pixels remain 0
-        valid_map = tf.where(
-            tf.equal(y_true, 0),
-            tf.zeros_like(y_true, dtype=tf.float32),
-            tf.ones_like(y_true, dtype=tf.float32)
+        valid_map = keras.ops.where(
+            keras.ops.equal(y_true, 0),
+            keras.ops.zeros_like(y_true, dtype="float32"),
+            keras.ops.ones_like(y_true, dtype="float32")
         )
-        return tf.reduce_sum(valid_map * tf.abs(y_true-y_pred))
+        return keras.ops.sum(valid_map * keras.ops.absolute(y_true-y_pred))
