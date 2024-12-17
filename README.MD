@@ -1,4 +1,7 @@
 # TensorFlow 2 / Keras Implementation of MADNet
+## Important Update:
+This code is currently being migrated over to Keras 3. Check back soon for updates.
+
 ## Introduction
 MADNet is a deep stereo depth estimation model. Its key defining features are:
  1. It has a light-weight architecture which means it has low latency.
