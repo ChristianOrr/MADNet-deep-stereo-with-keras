@@ -13,6 +13,7 @@ class EndPointError(keras.metrics.Metric):
     def __init__(self, name="EPE", **kwargs):
         super(EndPointError, self).__init__(name=name, **kwargs)
         self.end_point_error = self.add_weight(name='EPE', initializer='zeros')
+        self.total_steps = self.add_weight(name='total_steps', initializer='zeros')
 
     def update_state(self, y_true, y_pred, sample_weight=None):
         abs_errors = keras.ops.absolute(y_pred - y_true)
@@ -28,13 +29,15 @@ class EndPointError(keras.metrics.Metric):
         self.end_point_error.assign_add(
             keras.ops.sum(filtered_error) / keras.ops.sum(valid_map)
         )
+        self.total_steps.assign_add(1.0)
 
     def result(self):
-        return self.end_point_error
+        return self.end_point_error / self.total_steps
 
     def reset_state(self):
         # The state of the metric will be reset at the start of each epoch.
         self.end_point_error.assign(0.0)
+        self.total_steps.assign(0.0)
 
 
 class Bad3(keras.metrics.Metric):
@@ -48,6 +51,7 @@ class Bad3(keras.metrics.Metric):
         super(Bad3, self).__init__(name=name, **kwargs)
         self.pixel_threshold = 3
         self.bad3 = self.add_weight(name='bad3_percent', initializer='zeros')
+        self.total_steps = self.add_weight(name='total_steps', initializer='zeros')
 
     def update_state(self, y_true, y_pred, sample_weight=None):
         abs_errors = keras.ops.absolute(y_pred - y_true)
@@ -66,14 +70,16 @@ class Bad3(keras.metrics.Metric):
             keras.ops.zeros_like(filtered_error, dtype="float32")
         )
         # (number of errors greater than threshold) / (number of errors)   
-        self.bad3.assign_add(keras.ops.sum(bad_pixel_abs) / keras.ops.sum(valid_map) * 100)
+        self.bad3.assign_add((keras.ops.sum(bad_pixel_abs) / keras.ops.sum(valid_map)) * 100)
+        self.total_steps.assign_add(1.0)
 
     def result(self):
-        return self.bad3
+        return self.bad3 / self.total_steps
 
     def reset_state(self):
         # The state of the metric will be reset at the start of each epoch.
         self.bad3.assign(0.0)
+        self.total_steps.assign(0.0)
 
 
 #---------------Losses-------------------
