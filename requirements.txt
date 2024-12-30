@@ -1,4 +1,4 @@
-tensorflow==2.9
+tensorflow==2.9.3
 numpy==1.22.2
 matplotlib==3.5.1
 wandb==0.12.10
