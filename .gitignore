@@ -14,3 +14,4 @@ Demo/*/*
 *.txt
 sweep_config.yaml
 run_commands.txt
+model_weights

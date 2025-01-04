@@ -21,8 +21,12 @@ def colorize_img(value, vmin=None, vmax=None, cmap='jet'):
       - vmax: the maximum value of the range used for normalization. (Default: value maximum)
       - cmap: a valid cmap named for use with matplotlib's 'get_cmap'.(Default: 'gray')
     
-    Returns a 3D tensor of shape [batch_size,height, width,3].
+    Returns a 3D tensor of shape [batch_size, height, width, 3].
     """
+    # Add a new dimension if the input tensor has rank 3
+    if len(value.shape) == 3:
+        value = value[..., None]
+
     # normalize
     vmin = keras.ops.min(value) if vmin is None else vmin
     vmax = keras.ops.max(value) if vmax is None else vmax
@@ -35,7 +39,7 @@ def colorize_img(value, vmin=None, vmax=None, cmap='jet'):
     color_map = cm.get_cmap(cmap)
     colors = color_map(np.arange(256))[:, :3]
     colors = keras.ops.convert_to_tensor(colors, dtype="float32")
-    value = keras.ops.take(colors, indices)
+    value = keras.ops.take(colors, indices, axis=0)
     return value
 
 
@@ -377,7 +381,6 @@ def _custom_train_step(self, data):
     # Run backwards pass.
     self.optimizer.apply(gradients, trainable_vars)
 
-    # return_metrics = {}
     if gt is not None:
         for metric in self.metrics:
             if metric.name == "loss":
@@ -395,17 +398,10 @@ def _custom_test_step(predict_func):
         inputs, gt, sample_weight = data
         y_pred = predict_func(self, data)
         # Updates stateful loss metrics.
-        return_metrics = {}
-        self.compiled_metrics.reset_state()
-        self.compiled_metrics.update_state(y, y_pred, sample_weight)
-        # Collect metrics to return
         for metric in self.metrics:
-            result = metric.result()
-            if isinstance(result, dict):
-                return_metrics.update(result)
-            else:
-                return_metrics[metric.name] = result
-        return return_metrics
+            metric.update_state(gt, y_pred, sample_weight)
+        return {m.name: m.result() for m in self.metrics}
+
     return _test_step_block
 
 
@@ -423,7 +419,7 @@ def _custom_predict_step(num_adapt, mad_type):
     if num_adapt == 6:
         @tf.function
         def _predict_step_block(self, data):
-            inputs, _, _ = data
+            inputs, _, sample_weight = data
 
             left_input = inputs["left_input"]
             right_input = inputs["right_input"]
@@ -434,15 +430,20 @@ def _custom_predict_step(num_adapt, mad_type):
                 # Calculate loss
                 # Warp the right image into the left using final disparity
                 warped_left = WarpImageBlock()(right_input, final_disparity)
-                loss = self.compute_loss(left_input, warped_left)
+                loss = self.compute_loss(left_input, warped_left, sample_weight)
 
                 # Perform reduction on the loss
                 # Note: displayed loss will be sum of all batch losses, but backprop will use the reduced loss
                 batch_size = keras.ops.shape(left_input)[0]
                 reduced_loss = loss / keras.ops.cast(batch_size, dtype="float32")
 
+            # Compute gradients
+            trainable_vars = self.trainable_variables
+            gradients = tape.gradient(reduced_loss, trainable_vars)   
+
             # Run backwards pass.
-            self.optimizer.minimize(reduced_loss, self.trainable_variables, tape=tape)
+            self.optimizer.apply(gradients, trainable_vars)
+
             return final_disparity
     # MAD adaptation
     else:
@@ -467,7 +468,7 @@ def _custom_predict_step(num_adapt, mad_type):
                  "volume_filtering_6_disp1", "volume_filtering_6_disp2", "volume_filtering_6_disp3",
                  "volume_filtering_6_disp4", "volume_filtering_6_disp5", "volume_filtering_6_disp6"],
             ]
-            inputs, _, _ = data
+            inputs, _, sample_weight = data
 
             left_input = inputs["left_input"]
             right_input = inputs["right_input"]
@@ -478,7 +479,7 @@ def _custom_predict_step(num_adapt, mad_type):
                 # Calculate loss
                 # Warp the right image into the left using final disparity
                 warped_left = WarpImageBlock()(right_input, final_disparity)
-                loss = self.compute_loss(left_input, warped_left)
+                loss = self.compute_loss(left_input, warped_left, sample_weight)
 
                 # Perform reduction on the loss
                 # Note: displayed loss will be sum of all batch losses, but backprop will use the reduced loss

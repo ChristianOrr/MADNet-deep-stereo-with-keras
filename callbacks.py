@@ -1,8 +1,9 @@
 import wandb
+import keras
 import tensorflow as tf
 from madnet import colorize_img
 
-class WandBImagesCallback(tf.keras.callbacks.Callback):
+class WandBImagesCallback(keras.callbacks.Callback):
     """
     Logs image input data and disparity predictions
     to Weights and Biases dashboard. Can use the training data,
@@ -34,7 +35,7 @@ class WandBImagesCallback(tf.keras.callbacks.Callback):
             if self.training_data is not None:
                 data = next(self.training_data)
                 x, y = data
-                shape = tf.shape(y)
+                shape = keras.ops.shape(y)
                 if shape[0] > 1:
                     raise ValueError(f"Received batch_size {shape[0]} for training_data dataset. "
                                      "Please make sure batch size is 1")
@@ -58,7 +59,7 @@ class WandBImagesCallback(tf.keras.callbacks.Callback):
             if self.validation_data is not None:
                 data = next(self.validation_data)
                 val_x, val_y = data
-                shape = tf.shape(val_y)
+                shape = keras.ops.shape(val_y)
                 if shape[0] > 1:
                     raise ValueError(f"Received batch_size {shape[0]} for validation_data dataset. "
                                      "Please make sure batch size is 1")
@@ -81,7 +82,7 @@ class WandBImagesCallback(tf.keras.callbacks.Callback):
                 wandb.log({"Val": val_images_dict}, commit=True)
 
 
-class TensorboardImagesCallback(tf.keras.callbacks.Callback):
+class TensorboardImagesCallback(keras.callbacks.Callback):
     """
     Logs image input data and disparity predictions
     to Tensorboard dashboard. Can use the training data,
@@ -112,8 +113,8 @@ class TensorboardImagesCallback(tf.keras.callbacks.Callback):
         if epoch % self.val_epochs == 0:
             if self.training_data is not None:
                 data = next(self.training_data)
-                x, y = data
-                shape = tf.shape(x["left_input"])
+                x, y, _ = data
+                shape = keras.ops.shape(x["left_input"])
                 if shape[0] > 1:
                     raise ValueError(f"Received batch_size {shape[0]} for training_data dataset. "
                                      "Please make sure batch size is 1")
@@ -136,8 +137,8 @@ class TensorboardImagesCallback(tf.keras.callbacks.Callback):
 
             if self.validation_data is not None:
                 data = next(self.validation_data)
-                val_x, val_y = data
-                shape = tf.shape(val_x["left_input"])
+                val_x, val_y, _ = data
+                shape = keras.ops.shape(val_x["left_input"])
                 if shape[0] > 1:
                     raise ValueError(f"Received batch_size {shape[0]} for validation_data dataset. "
                                      "Please make sure batch size is 1")
@@ -159,7 +160,7 @@ class TensorboardImagesCallback(tf.keras.callbacks.Callback):
                 tf.summary.image('val_04_right_image', val_x["right_input"], step=epoch, max_outputs=1)
 
 
-class TensorboardTestImagesCallback(tf.keras.callbacks.Callback):
+class TensorboardTestImagesCallback(keras.callbacks.Callback):
     """
     Logs image input data and disparity predictions
     to Tensorboard dashboard.
@@ -183,7 +184,7 @@ class TensorboardTestImagesCallback(tf.keras.callbacks.Callback):
         if batch % self.test_steps == 0:
             data = next(self.testing_data)
             x, y = data
-            shape = tf.shape(x["left_input"])
+            shape = keras.ops.shape(x["left_input"])
             if shape[0] > 1:
                 raise ValueError(f"Received batch_size {shape[0]} for testing_data dataset. "
                                  "Please make sure batch size is 1")
@@ -203,4 +204,4 @@ class TensorboardTestImagesCallback(tf.keras.callbacks.Callback):
             tf.summary.image('test_04_right_image', x["right_input"], step=batch, max_outputs=20)
             if self.pred_dir is not None:
                 image_path = self.pred_dir + f"/step{batch}.png"
-                tf.keras.utils.save_img(image_path, pred_colorized[0])
+                keras.utils.save_img(image_path, pred_colorized[0])

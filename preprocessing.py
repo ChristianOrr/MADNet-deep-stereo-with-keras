@@ -37,15 +37,15 @@ class StereoDatasetCreator():
         self.augment = augment
 
         self.left_names = keras.ops.array(
-            sorted([name for name in os.listdir(left_dir) if os.path.isfile(f"{self.left_dir}/{name}")]
+            sorted([str(name) for name in os.listdir(left_dir) if os.path.isfile(f"{self.left_dir}/{name}")]
             )
         )
         self.right_names = keras.ops.array(
-            sorted([name for name in os.listdir(right_dir) if os.path.isfile(f"{self.right_dir}/{name}")])
+            sorted([str(name) for name in os.listdir(right_dir) if os.path.isfile(f"{self.right_dir}/{name}")])
         )
         if self.disp_dir is not None:
             self.disp_names = keras.ops.array(
-                sorted([name for name in os.listdir(disp_dir) if os.path.isfile(f"{self.disp_dir}/{name}")])
+                sorted([str(name) for name in os.listdir(disp_dir) if os.path.isfile(f"{self.disp_dir}/{name}")])
             )
 
         # Check that there is a left image for every right image
@@ -155,32 +155,36 @@ class StereoDatasetCreator():
         return disp_map
 
     def _get_disp(self, disp_name):
-        """
-        Args:
-            disp_name: Tensor string, name of the disparity file
-        Returns:
-            disparity map in the format [height, width, 1],
-            with float32 values representing the absolute
-            pixel disparity.
-        """
-        disp_extension = tf.strings.split(disp_name, sep=".")[-1].numpy().decode()
-        disp_path = f"{self.disp_dir}/" + disp_name
-        if disp_extension == "pfm" or disp_extension == "PFM":
-            # wrapping in py_function so that the function can execute eagerly and run non tensor ops
-            disp_map = tf.py_function(func=self._get_pfm, inp=[disp_path], Tout="float32")
-        elif disp_extension == "png" or disp_extension == "PNG":
-            disp_bytes = tf.io.read_file(disp_path)
-            # Using uint16 for higher precision
-            disp_map = tf.io.decode_png(disp_bytes, dtype="uint16")
-            disp_map = keras.ops.cast(disp_map, dtype="float32")
-            disp_map = disp_map / 256.0
-            # Using nearest neighbour interpolation for sparse groundtruth disparities
-            disp_map = keras.ops.image.resize(disp_map, [self.height, self.width], interpolation="nearest")
-        else:
-            raise ValueError("Unsupported disparity file detected "
-                             "only .pfm and .png disparities are supported. \n"
-                             f"Detected extension: .{disp_extension} from: {disp_name}")
-        return disp_map
+            """
+            Args:
+                disp_name: Tensor string, name of the disparity file
+            Returns:
+                disparity map in the format [height, width, 1],
+                with float32 values representing the absolute
+                pixel disparity.
+            """
+            try:
+                disp_name_str = disp_name.numpy().decode()
+                disp_extension = disp_name_str.split(".")[-1]
+            except:
+                raise ValueError(f"Error splitting the disparity file name: {disp_name}")
+            disp_path = f"{self.disp_dir}/" + disp_name_str
+            if disp_extension == "pfm" or disp_extension == "PFM":
+                # wrapping in py_function so that the function can execute eagerly and run non tensor ops
+                disp_map = tf.py_function(func=self._get_pfm, inp=[disp_path], Tout="float32")
+            elif disp_extension == "png" or disp_extension == "PNG":
+                disp_bytes = tf.io.read_file(disp_path)
+                # Using uint16 for higher precision
+                disp_map = tf.io.decode_png(disp_bytes, dtype="uint16")
+                disp_map = keras.ops.cast(disp_map, dtype="float32")
+                disp_map = disp_map / 256.0
+                # Using nearest neighbour interpolation for sparse groundtruth disparities
+                disp_map = keras.ops.image.resize(disp_map, [self.height, self.width], interpolation="nearest")
+            else:
+                raise ValueError("Unsupported disparity file detected "
+                                "only .pfm and .png disparities are supported. \n"
+                                f"Detected extension: .{disp_extension} from: {disp_name}")
+            return disp_map
 
     def _process_single_batch(self, index):
         """
